@@ -1,0 +1,230 @@
+---
+title: "Supermarket Sales Data"
+author: "Azer Azizov"
+date: "`r format(Sys.Date(), '%d %b %Y')`"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+<script>
+   $(document).ready(function() {
+     $head = $('#header');
+     $head.prepend('<img src=\"https://storage.jobsearch.az/storage/pages/3347/code-academy-logo-new.png" style=\"float: right;width: 200px;\"/>')
+   });
+</script>
+
+## Kitabxanaların yüklənməsi 
+
+```{r setup, error=FALSE, message=FALSE, warning=FALSE, echo=TRUE, include=TRUE}
+library(ggplot2)
+library(dplyr)
+library(readr)
+library(knitr)
+library(lubridate)
+df = read.csv("supermarket_sales - Sheet1.csv")
+```
+
+## Məlumat keyfiyyətinin yoxlanması
+
+
+```{r task1, error=FALSE, message=FALSE, warning=FALSE, echo=TRUE, include=TRUE}
+dim(df)
+glimpse(df)
+colSums(is.na(df))
+head(df)
+```
+
+## Date və Time sütunlarını çevirmək
+
+
+```{r task2, error=FALSE, message=FALSE, warning=FALSE, echo=TRUE, include=TRUE}
+
+df = df %>%
+  mutate(
+    Date  = mdy(Date),        
+    Hour  = hour(hm(Time)),   
+    Month = month(Date, label = TRUE)  
+  )
+
+
+glimpse(df %>% select(Date, Time, Hour, Month))   
+sum(is.na(df$Date))                               
+range(df$Date)                                   
+table(df$Hour)                                   
+```
+
+## Group by ilə ümumi satış və sifariş sayı
+
+
+```{r task3, error=FALSE, message=FALSE, warning=FALSE, echo=TRUE, include=TRUE}
+# 1) Filial (Branch) üzrə
+by_branch = df %>%
+  group_by(Branch) %>%
+  summarise(
+    Total_Sales = round(sum(Total), 2),   
+    Orders      = n()                     
+  ) %>%
+  arrange(desc(Total_Sales))                
+by_branch
+
+# 2) Məhsul kateqoriyası (Product line) üzrə
+by_product = df %>%
+  group_by(Product.line) %>%
+  summarise(
+    Total_Sales = round(sum(Total), 2),
+    Orders      = n()
+  ) %>%
+  arrange(desc(Total_Sales))
+by_product
+
+# 3) Müştəri növü (Customer type) üzrə
+by_customer = df %>%
+  group_by(Customer.type) %>%
+  summarise(
+    Total_Sales = round(sum(Total), 2),
+    Orders      = n()
+  ) %>%
+  arrange(desc(Total_Sales))
+by_customer
+
+# 4) Cins (Gender) üzrə
+by_gender = df %>%
+  group_by(Gender) %>%
+  summarise(
+    Total_Sales = round(sum(Total), 2),
+    Orders      = n()
+  ) %>%
+  arrange(desc(Total_Sales))
+by_gender
+```
+
+## “Ən sıx saatı müəyyən etmək”
+
+
+```{r task4, error=FALSE, message=FALSE, warning=FALSE, echo=TRUE, include=TRUE}
+# Saat üzrə satış və sifariş sayı
+by_hour = df %>%
+  group_by(Hour) %>%
+  summarise(
+    Total_Sales = round(sum(Total), 2),
+    Orders      = n()
+  )
+by_hour  
+
+# Sifariş sayına görə ən sıx 3 saat
+by_hour %>% arrange(desc(Orders)) %>% head(3)
+
+# Satış məbləğinə görə ən sıx 3 saat
+by_hour %>% arrange(desc(Total_Sales)) %>% head(3)
+```
+
+
+## 3 qrafik
+
+
+```{r task5, error=FALSE, message=FALSE, warning=FALSE, echo=TRUE, include=TRUE}
+# Qrafik 1: Məhsul kateqoriyası üzrə ümumi satış (bar chart)
+ggplot(by_product, aes(x = reorder(Product.line, Total_Sales), y = Total_Sales)) +
+  geom_col(fill = "steelblue") +
+  coord_flip() +
+  labs(title = "Məhsul kateqoriyası üzrə ümumi satış",
+       x = "Məhsul kateqoriyası", y = "Ümumi satış") +
+  theme_minimal()
+
+# Qrafik 2: Müştəri növü üzrə sifarişlərin payı (pie chart)
+by_customer = by_customer %>%
+  mutate(Percent = round(Orders / sum(Orders) * 100, 1))
+
+ggplot(by_customer, aes(x = "", y = Orders, fill = Customer.type)) +
+  geom_col(width = 1) +
+  coord_polar(theta = "y") +
+  geom_text(aes(label = paste0(Percent, "%")),
+            position = position_stack(vjust = 0.5)) +
+  labs(title = "Müştəri növü üzrə sifarişlərin payı",
+       fill = "Müştəri növü") +
+  theme_void()
+
+# Qrafik 3: Saat üzrə ümumi satış (line chart)
+ggplot(by_hour, aes(x = Hour, y = Total_Sales)) +
+  geom_line(color = "darkgreen", linewidth = 1) +
+  geom_point(color = "darkgreen", size = 2) +
+  scale_x_continuous(breaks = 10:20) +
+  labs(title = "Gün ərzində saatlar üzrə ümumi satış",
+       x = "Saat", y = "Ümumi satış") +
+  theme_minimal()
+```
+
+
+## Gross margin faizi (məhsul kateqoriyası üzrə)
+
+
+```{r task6, error=FALSE, message=FALSE, warning=FALSE, echo=TRUE, include=TRUE}
+margin_product = df %>%
+  group_by(Product.line) %>%
+  summarise(
+    Total_Sales  = sum(Total),
+    Gross_Income = sum(gross.income),
+    Margin_Pct   = round(Gross_Income / Total_Sales * 100, 2)   # mənfəət / satış * 100
+  )
+margin_product
+```
+
+
+## Heatmap: filial × məhsul kateqoriyası üzrə satış
+
+
+```{r task7, error=FALSE, message=FALSE, warning=FALSE, echo=TRUE, include=TRUE}
+heat_data = df %>%
+  group_by(Branch, Product.line) %>%
+  summarise(Total_Sales = sum(Total), .groups = "drop")
+
+ggplot(heat_data, aes(x = Branch, y = Product.line, fill = Total_Sales)) +
+  geom_tile(color = "white") +
+  geom_text(aes(label = round(Total_Sales)), color = "white") +
+  scale_fill_gradient(low = "lightblue", high = "darkblue") +
+  labs(title = "Filial və məhsul kateqoriyası üzrə ümumi satış",
+       x = "Filial", y = "Məhsul kateqoriyası", fill = "Ümumi satış") +
+  theme_minimal()
+```
+
+
+## Nəticələri (insight) üçün əlavə rəqəmlər
+
+
+```{r task8, error=FALSE, message=FALSE, warning=FALSE, echo=TRUE, include=TRUE}
+# Aylar üzrə satış
+df %>% group_by(Month) %>% summarise(Total_Sales = round(sum(Total), 2))
+
+# Orta sifariş məbləği (filial, müştəri növü, cins üzrə)
+df %>% group_by(Branch) %>% summarise(Avg_Order = round(mean(Total), 2))
+df %>% group_by(Customer.type) %>% summarise(Avg_Order = round(mean(Total), 2))
+df %>% group_by(Gender) %>% summarise(Avg_Order = round(mean(Total), 2))
+```
+
+
+## 4 biznes nəticə
+
+
+```{r task9, error=FALSE, message=FALSE, warning=FALSE, echo=TRUE, include=TRUE}
+
+#1. C filialı ən yüksək satışa malikdir, çünki müştərilər orada bir sifarişdə daha çox xərcləyir.
+#C filialının ümumi satışı 110 568.7-dir, A-nın 106 200.4, B-nin 106 197.7 (fərq təxminən 4%). C-nin sifariş sayı ən azdır (328), amma orta sifariş məbləği ən yüksəkdir (337.10; A-da 312.35, B-də 319.87).
+#Əsas Nəticə: C-də satışı sifariş sayı yox, sifariş məbləği artırır. A və B filialları da paket təklifləri və əlavə məhsul satışı ilə orta məbləği artıra bilər.
+
+#2. Kateqoriyalar arasında fərq azdır, ən zəif kateqoriya Health and beauty-dir.
+#Ən yaxşı: Food and beverages (56 144.84) və Sports and travel (55 122.83). Ən zəif: Health and beauty (49 193.74), yəni liderdən təxminən 12% geridir. Qalan 3 kateqoriya 53 862–54 338 arasındadır.
+#Əsas Nəticə: heç bir kateqoriya satışı tək başına daşımır. Health and beauty ən çox inkişaf potensialı olan kateqoriyadır.
+
+#3. Ən sıx saatlar 19:00 və 13:00-dır.
+#19:00-da ən çox sifariş (113) və ən yüksək satış (39 699.51) var. İkinci zirvə 13:00-dadır (103 sifariş, 34 723.23). #Ən az sifariş 17:00-dadır (74).
+#Əsas Nəticə: kassir sayını və məhsul ehtiyatını bu iki saata görə planlaşdırmaq olar. 16:00–17:00 arasında sakit saatlarda isə endirim və kampaniyalar satışı artıra bilər.
+
+#4. Qadınlar kişilərdən daha çox xərcləyir və kateqoriya seçimləri fərqlidir.
+#Sifariş sayı demək olar ki, eynidir (501 və 499), amma qadınların ümumi satışı 167 882.9, kişilərinki 155 083.8-dir. Orta sifariş məbləği qadınlarda 335.10, kişilərdə 310.79-dur (təxminən 8% fərq). Qadınlar Food and beverages-ə (33 171 qarşı 22 974), Fashion accessories-ə (30 437 qarşı 23 868) və Home and lifestyle-a (30 037 qarşı 23 825) daha çox pul xərcləyir. Kişilər isə Health and beauty-də qabaqdadır (30 633 qarşı 18 561).
+#Əsas Nəticə: kampaniyaları hədəf qrupuna görə qurmaq olar. Məsələn, kişilərə yönəlmiş Health and beauty təklifləri bu zəif kateqoriyanı gücləndirə bilər.
+
+```
+
+
